@@ -5,8 +5,16 @@ import (
 	"fmt"
 	"os"
 	"strings"
+	"unicode"
 
 	tea "github.com/charmbracelet/bubbletea"
+)
+
+const (
+	blocked  = '!'
+	selectBg = "\x1b[44m" // blue background
+	selectFg = "\x1b[34m" // blue foreground
+	reset    = "\x1b[0m"
 )
 
 type model struct {
@@ -14,6 +22,20 @@ type model struct {
 	selectedX, selectedY int
 	grid                 [][]rune
 	answergrid           [][]rune
+}
+
+// newModel creates a size x size grid with every cell at an odd row and column blocked.
+func newModel(size int) model {
+	grid := make([][]rune, size)
+	for x := range grid {
+		grid[x] = make([]rune, size)
+		for y := range grid[x] {
+			if x%2 == 1 && y%2 == 1 {
+				grid[x][y] = blocked
+			}
+		}
+	}
+	return model{size: size, grid: grid}
 }
 
 func (m model) Init() tea.Cmd { return nil }
@@ -42,7 +64,10 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 		default:
 			if msg.Type == tea.KeyRunes && len(msg.Runes) == 1 {
-				m.grid[m.selectedX][m.selectedY] = msg.Runes[0]
+				r := msg.Runes[0]
+				if unicode.IsLetter(r) && m.grid[m.selectedX][m.selectedY] != blocked {
+					m.grid[m.selectedX][m.selectedY] = r
+				}
 			}
 		}
 	}
@@ -75,13 +100,9 @@ func renderGrid(n int, selx int, sely int, grid [][]rune) string {
 	b.WriteString(line("┌", "┬", "┐", "───"))
 	for row := 0; row < n; row++ {
 		for col := 0; col < n; col++ {
-			if row == sely && col == selx {
-				b.WriteString(fmt.Sprintf("│\x1b[7m %c \x1b[0m", cellText(row, col, grid)))
-			} else {
-				b.WriteString(fmt.Sprintf("│ %c ", cellText(row, col, grid)))
-			}
+			b.WriteString("│" + cellText(grid[col][row], row == sely && col == selx))
 		}
-		b.WriteString("|\n")
+		b.WriteString("│\n")
 		if row < n-1 {
 			b.WriteString(line("├", "┼", "┤", "───"))
 		}
@@ -90,27 +111,32 @@ func renderGrid(n int, selx int, sely int, grid [][]rune) string {
 	return b.String()
 }
 
-func cellText(row, col int, grid [][]rune) rune {
-	if grid[col][row] != 0 {
-		return grid[col][row]
+// cellText returns the 3-character-wide contents of a cell.
+func cellText(r rune, selected bool) string {
+	if r == blocked {
+		if selected {
+			return selectFg + "███" + reset
+		}
+		return "███"
 	}
-	return ' '
+	if r == 0 {
+		r = ' '
+	}
+	if selected {
+		return fmt.Sprintf("%s %c %s", selectBg, r, reset)
+	}
+	return fmt.Sprintf(" %c ", r)
 }
 
 func main() {
-	// TODO: add a newModel func
+	// TODO: add answer grid, check current against answers
 	size := flag.Int("size", 5, "width and height of the grid")
 	flag.Parse()
 	if *size < 1 {
 		fmt.Println("size must be at least 1")
 		os.Exit(1)
 	}
-	grid := make([][]rune, *size)
-	for i := range grid {
-		grid[i] = make([]rune, *size)
-	}
-
-	if _, err := tea.NewProgram(model{size: *size, grid: grid}).Run(); err != nil {
+	if _, err := tea.NewProgram(newModel(*size)).Run(); err != nil {
 		fmt.Println(err)
 		os.Exit(1)
 	}
