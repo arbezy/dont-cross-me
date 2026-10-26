@@ -17,11 +17,14 @@ const (
 	reset    = "\x1b[0m"
 )
 
+const helpText = "tab/space to switch between across and down clue\n" +
+	"(press esc or ctrl+c to quit)\n"
+
 type model struct {
 	size                 int
 	selectedX, selectedY int
-	grid                 [][]rune
-	answergrid           [][]rune
+	grid                 [][]rune // indexed as grid[x][y]
+	answerGrid           [][]rune
 	horizontalFill       bool // is the grid being filled out horizontally, if false then its vertical
 }
 
@@ -41,92 +44,97 @@ func newModel(size int) model {
 func (m model) Init() tea.Cmd { return nil }
 
 func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
-	switch msg := msg.(type) {
-	case tea.KeyMsg:
-		switch msg.String() {
-		case "ctrl+c", "esc":
-			return m, tea.Quit
-		case "up":
-			if m.isInBounds(m.selectedX, m.selectedY-1) {
-				m.selectedY -= 1
-			}
-		case "down":
-			if m.isInBounds(m.selectedX, m.selectedY+1) {
-				m.selectedY += 1
-			}
-		case "left":
-			if m.isInBounds(m.selectedX-1, m.selectedY) {
-				m.selectedX -= 1
-			}
-		case "right":
-			if m.isInBounds(m.selectedX+1, m.selectedY) {
-				m.selectedX += 1
-			}
-		case "tab", " ": // swap between horizontal and vertical fill
-			m.horizontalFill = !m.horizontalFill
-		case "backspace": // clear the current letter, or if there isn't one step back and clear that cell
-			if r := m.grid[m.selectedX][m.selectedY]; r == 0 || r == blocked {
-				if m.horizontalFill && m.isInBounds(m.selectedX-1, m.selectedY) {
-					m.selectedX -= 1
-				} else if !m.horizontalFill && m.isInBounds(m.selectedX, m.selectedY-1) {
-					m.selectedY -= 1
-				}
-			}
-			if m.grid[m.selectedX][m.selectedY] != blocked {
-				m.grid[m.selectedX][m.selectedY] = 0
-			}
-		default:
-			if msg.Type == tea.KeyRunes && len(msg.Runes) == 1 {
-				r := msg.Runes[0]
-				if unicode.IsLetter(r) && m.grid[m.selectedX][m.selectedY] != blocked {
-					m.grid[m.selectedX][m.selectedY] = unicode.ToLower(r)
-					if m.horizontalFill && m.isInBounds(m.selectedX+1, m.selectedY) {
-						m.selectedX += 1
-					} else if !m.horizontalFill && m.isInBounds(m.selectedX, m.selectedY+1) {
-						m.selectedY += 1
-					}
-				}
-			}
+	key, ok := msg.(tea.KeyMsg)
+	if !ok {
+		return m, nil
+	}
+
+	switch key.String() {
+	case "ctrl+c", "esc":
+		return m, tea.Quit
+	case "up":
+		m.move(0, -1)
+	case "down":
+		m.move(0, 1)
+	case "left":
+		m.move(-1, 0)
+	case "right":
+		m.move(1, 0)
+	case "tab", " ": // swap between horizontal and vertical fill
+		m.horizontalFill = !m.horizontalFill
+	case "backspace": // clear the current letter, or if there isn't one step back and clear that cell
+		if r := m.selectedCell(); r == 0 || r == blocked {
+			m.step(-1)
+		}
+		if m.selectedCell() != blocked {
+			m.setSelectedCell(0)
+		}
+	default:
+		if key.Type != tea.KeyRunes || len(key.Runes) != 1 {
+			break
+		}
+		if r := key.Runes[0]; unicode.IsLetter(r) && m.selectedCell() != blocked {
+			m.setSelectedCell(unicode.ToLower(r))
+			m.step(1)
 		}
 	}
 	return m, nil
 }
 
+// move shifts the selection by (dx, dy) if the target cell is in bounds.
+func (m *model) move(dx, dy int) {
+	if m.isInBounds(m.selectedX+dx, m.selectedY+dy) {
+		m.selectedX += dx
+		m.selectedY += dy
+	}
+}
+
+// step moves the selection by delta along the current fill direction.
+func (m *model) step(delta int) {
+	if m.horizontalFill {
+		m.move(delta, 0)
+	} else {
+		m.move(0, delta)
+	}
+}
+
+func (m model) selectedCell() rune {
+	return m.grid[m.selectedX][m.selectedY]
+}
+
+func (m model) setSelectedCell(r rune) {
+	m.grid[m.selectedX][m.selectedY] = r
+}
+
 // todo: also check if its blocked
 func (m model) isInBounds(x, y int) bool {
-	if x >= 0 && x < m.size && y >= 0 && y < m.size {
-		return true
-	}
-	return false
+	return x >= 0 && x < m.size && y >= 0 && y < m.size
 }
 
 func (m model) View() string {
-	return renderGrid(m.size, m.selectedX, m.selectedY, m.grid) + "\ntab/space to switch between across and down clue\n(press esc or ctrl+c to quit)\n"
+	return m.renderGrid() + "\n" + helpText
 }
 
+// renderGrid draws the grid using box-drawing characters, highlighting the selected cell.
 // TODO: swap this out for a snazzy lip gloss version !!!
-// renderGrid draws an n x n grid of empty squares using box-drawing characters.
-func renderGrid(n int, selx int, sely int, grid [][]rune) string {
-	line := func(left, mid, right, fill string) string {
-		cells := make([]string, n)
-		for i := range cells {
-			cells[i] = fill
-		}
-		return left + strings.Join(cells, mid) + right + "\n"
+func (m model) renderGrid() string {
+	border := func(left, mid, right string) string {
+		return left + strings.Repeat("───"+mid, m.size-1) + "───" + right + "\n"
 	}
 
 	var b strings.Builder
-	b.WriteString(line("┌", "┬", "┐", "───"))
-	for row := 0; row < n; row++ {
-		for col := 0; col < n; col++ {
-			b.WriteString("│" + cellText(grid[col][row], row == sely && col == selx))
+	b.WriteString(border("┌", "┬", "┐"))
+	for y := 0; y < m.size; y++ {
+		for x := 0; x < m.size; x++ {
+			selected := x == m.selectedX && y == m.selectedY
+			b.WriteString("│" + cellText(m.grid[x][y], selected))
 		}
 		b.WriteString("│\n")
-		if row < n-1 {
-			b.WriteString(line("├", "┼", "┤", "───"))
+		if y < m.size-1 {
+			b.WriteString(border("├", "┼", "┤"))
 		}
 	}
-	b.WriteString(line("└", "┴", "┘", "───"))
+	b.WriteString(border("└", "┴", "┘"))
 	return b.String()
 }
 
@@ -152,11 +160,11 @@ func main() {
 	size := flag.Int("size", 5, "width and height of the grid")
 	flag.Parse()
 	if *size < 1 {
-		fmt.Println("size must be at least 1")
+		fmt.Fprintln(os.Stderr, "size must be at least 1")
 		os.Exit(1)
 	}
 	if _, err := tea.NewProgram(newModel(*size)).Run(); err != nil {
-		fmt.Println(err)
+		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}
 }
