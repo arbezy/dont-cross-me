@@ -22,20 +22,20 @@ type model struct {
 	selectedX, selectedY int
 	grid                 [][]rune
 	answergrid           [][]rune
+	horizontalFill       bool // is the grid being filled out horizontally, if false then its vertical
 }
 
-// newModel creates a size x size grid with every cell at an odd row and column blocked.
 func newModel(size int) model {
 	grid := make([][]rune, size)
 	for x := range grid {
 		grid[x] = make([]rune, size)
 		for y := range grid[x] {
-			if x%2 == 1 && y%2 == 1 {
+			if (x == 0 || x == size-1) && (y == 0 || y == size-1) {
 				grid[x][y] = blocked
 			}
 		}
 	}
-	return model{size: size, grid: grid}
+	return model{size: size, grid: grid, horizontalFill: true}
 }
 
 func (m model) Init() tea.Cmd { return nil }
@@ -62,11 +62,18 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if m.isInBounds(m.selectedX+1, m.selectedY) {
 				m.selectedX += 1
 			}
+		case "tab", "space": // swap between horizontal and vertical fill
+			m.horizontalFill = !m.horizontalFill
 		default:
 			if msg.Type == tea.KeyRunes && len(msg.Runes) == 1 {
 				r := msg.Runes[0]
 				if unicode.IsLetter(r) && m.grid[m.selectedX][m.selectedY] != blocked {
-					m.grid[m.selectedX][m.selectedY] = r
+					m.grid[m.selectedX][m.selectedY] = unicode.ToLower(r)
+					if m.horizontalFill && m.isInBounds(m.selectedX+1, m.selectedY) {
+						m.selectedX += 1
+					} else if !m.horizontalFill && m.isInBounds(m.selectedX, m.selectedY+1) {
+						m.selectedY += 1
+					}
 				}
 			}
 		}
@@ -74,6 +81,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
+// todo: also check if its blocked
 func (m model) isInBounds(x, y int) bool {
 	if x >= 0 && x < m.size && y >= 0 && y < m.size {
 		return true
@@ -82,7 +90,7 @@ func (m model) isInBounds(x, y int) bool {
 }
 
 func (m model) View() string {
-	return renderGrid(m.size, m.selectedX, m.selectedY, m.grid) + "\n(press esc or ctrl+c to quit)\n"
+	return renderGrid(m.size, m.selectedX, m.selectedY, m.grid) + "\ntab/space to switch between across and down clue\n(press esc or ctrl+c to quit)\n"
 }
 
 // TODO: swap this out for a snazzy lip gloss version !!!
