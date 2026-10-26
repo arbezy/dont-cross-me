@@ -10,7 +10,8 @@ import (
 )
 
 type model struct {
-	size int
+	size                 int
+	selectedX, selectedY int
 }
 
 func (m model) Init() tea.Cmd { return nil }
@@ -23,11 +24,11 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 }
 
 func (m model) View() string {
-	return renderGrid(m.size) + "\n(press any key to quit)\n"
+	return renderGrid(m.size, m.selectedX, m.selectedY) + "\n(press any key to quit)\n"
 }
 
 // renderGrid draws an n x n grid of empty squares using box-drawing characters.
-func renderGrid(n int) string {
+func renderGrid(n int, selx int, sely int) string {
 	line := func(left, mid, right, fill string) string {
 		cells := make([]string, n)
 		for i := range cells {
@@ -39,7 +40,14 @@ func renderGrid(n int) string {
 	var b strings.Builder
 	b.WriteString(line("┌", "┬", "┐", "───"))
 	for row := 0; row < n; row++ {
-		b.WriteString(line("│", "│", "│", "   "))
+		for col := 0; col < n; col++ {
+			if row == sely && col == selx {
+				b.WriteString("│\x1b[7m   \x1b[0m")
+			} else {
+				b.WriteString("│   ")
+			}
+		}
+		b.WriteString("|\n")
 		if row < n-1 {
 			b.WriteString(line("├", "┼", "┤", "───"))
 		}
