@@ -22,15 +22,39 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		switch msg.String() {
 		case "ctrl+c", "q":
 			return m, tea.Quit
+		case "up":
+			if m.isInBounds(m.selectedX, m.selectedY-1) {
+				m.selectedY -= 1
+			}
+		case "down":
+			if m.isInBounds(m.selectedX, m.selectedY+1) {
+				m.selectedY += 1
+			}
+		case "left":
+			if m.isInBounds(m.selectedX-1, m.selectedY) {
+				m.selectedX -= 1
+			}
+		case "right":
+			if m.isInBounds(m.selectedX+1, m.selectedY) {
+				m.selectedX += 1
+			}
 		}
 	}
 	return m, nil
 }
 
-func (m model) View() string {
-	return renderGrid(m.size, m.selectedX, m.selectedY) + "\n(press any key to quit)\n"
+func (m model) isInBounds(x, y int) bool {
+	if x >= 0 && x < m.size && y >= 0 && y < m.size {
+		return true
+	}
+	return false
 }
 
+func (m model) View() string {
+	return renderGrid(m.size, m.selectedX, m.selectedY) + "\n(press q or ctrl+c to quit)\n"
+}
+
+// TODO: swap this out for a snazzy lip gloss version !!!
 // renderGrid draws an n x n grid of empty squares using box-drawing characters.
 func renderGrid(n int, selx int, sely int) string {
 	line := func(left, mid, right, fill string) string {
