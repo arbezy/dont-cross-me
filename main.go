@@ -62,8 +62,19 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if m.isInBounds(m.selectedX+1, m.selectedY) {
 				m.selectedX += 1
 			}
-		case "tab", "space": // swap between horizontal and vertical fill
+		case "tab", " ": // swap between horizontal and vertical fill
 			m.horizontalFill = !m.horizontalFill
+		case "backspace": // clear the current letter, or if there isn't one step back and clear that cell
+			if r := m.grid[m.selectedX][m.selectedY]; r == 0 || r == blocked {
+				if m.horizontalFill && m.isInBounds(m.selectedX-1, m.selectedY) {
+					m.selectedX -= 1
+				} else if !m.horizontalFill && m.isInBounds(m.selectedX, m.selectedY-1) {
+					m.selectedY -= 1
+				}
+			}
+			if m.grid[m.selectedX][m.selectedY] != blocked {
+				m.grid[m.selectedX][m.selectedY] = 0
+			}
 		default:
 			if msg.Type == tea.KeyRunes && len(msg.Runes) == 1 {
 				r := msg.Runes[0]
