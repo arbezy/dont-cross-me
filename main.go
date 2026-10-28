@@ -8,6 +8,7 @@ import (
 	"unicode"
 
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/lipgloss"
 )
 
 const (
@@ -26,16 +27,52 @@ type model struct {
 	grid                 [][]rune // indexed as grid[x][y]
 	answerGrid           [][]rune
 	horizontalFill       bool // is the grid being filled out horizontally, if false then its vertical
+	acrossClues          []clue
+	downClues            []clue
+}
+
+type clue struct {
+	number int
+	text   string
 }
 
 func newModel(size int) model {
 	// TODO: load real answers instead of filling every open cell with 'a'
-	return model{
+	m := model{
 		size:           size,
 		grid:           newGrid(size, 0),
 		answerGrid:     newGrid(size, 'a'),
 		horizontalFill: true,
 	}
+	m.acrossClues, m.downClues = m.numberClues()
+	return m
+}
+
+// numberClues numbers, in reading order, every cell that starts an across or down word
+// of at least two letters, and returns a clue for each word.
+// TODO: replace the filler text with real clues
+func (m model) numberClues() (across, down []clue) {
+	n := 0
+	for y := 0; y < m.size; y++ {
+		for x := 0; x < m.size; x++ {
+			if !m.isOpen(x, y) {
+				continue
+			}
+			startsAcross := !m.isOpen(x-1, y) && m.isOpen(x+1, y)
+			startsDown := !m.isOpen(x, y-1) && m.isOpen(x, y+1)
+			if !startsAcross && !startsDown {
+				continue
+			}
+			n++
+			if startsAcross {
+				across = append(across, clue{n, fmt.Sprintf("test clue %d", n)})
+			}
+			if startsDown {
+				down = append(down, clue{n, fmt.Sprintf("test clue %d", n)})
+			}
+		}
+	}
+	return across, down
 }
 
 // newGrid returns a size x size grid with the corners blocked and every other cell set to fill.
@@ -102,6 +139,7 @@ func (m *model) move(dx, dy int) {
 	}
 }
 
+// TODO: make it so that when we reach the end of the grid, i.e. complete a word, then we move on to the next one
 // step moves the selection by delta along the current fill direction.
 func (m *model) step(delta int) {
 	if m.horizontalFill {
@@ -119,9 +157,14 @@ func (m model) setSelectedCell(r rune) {
 	m.grid[m.selectedX][m.selectedY] = r
 }
 
-// todo: also check if its blocked
+// TODO: also check if its blocked
 func (m model) isInBounds(x, y int) bool {
 	return x >= 0 && x < m.size && y >= 0 && y < m.size
+}
+
+// isOpen reports whether (x, y) is an in-bounds cell that isn't blocked.
+func (m model) isOpen(x, y int) bool {
+	return m.isInBounds(x, y) && m.grid[x][y] != blocked
 }
 
 // isSolved reports whether every cell in the grid matches the answer grid.
@@ -137,11 +180,26 @@ func (m model) isSolved() bool {
 }
 
 func (m model) View() string {
-	view := m.renderGrid() + "\n"
+	const gap = "   "
+	view := lipgloss.JoinHorizontal(lipgloss.Top,
+		m.renderGrid(), gap,
+		renderClues("Across", m.acrossClues), gap,
+		renderClues("Down", m.downClues),
+	) + "\n"
 	if m.isSolved() {
 		view += "you got the answer!\n"
 	}
 	return view + helpText
+}
+
+// renderClues draws a titled column of numbered clues.
+func renderClues(title string, clues []clue) string {
+	var b strings.Builder
+	b.WriteString(title + "\n")
+	for _, c := range clues {
+		fmt.Fprintf(&b, "%d. %s\n", c.number, c.text)
+	}
+	return b.String()
 }
 
 // renderGrid draws the grid using box-drawing characters, highlighting the selected cell.
