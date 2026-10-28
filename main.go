@@ -29,16 +29,29 @@ type model struct {
 }
 
 func newModel(size int) model {
+	// TODO: load real answers instead of filling every open cell with 'a'
+	return model{
+		size:           size,
+		grid:           newGrid(size, 0),
+		answerGrid:     newGrid(size, 'a'),
+		horizontalFill: true,
+	}
+}
+
+// newGrid returns a size x size grid with the corners blocked and every other cell set to fill.
+func newGrid(size int, fill rune) [][]rune {
 	grid := make([][]rune, size)
 	for x := range grid {
 		grid[x] = make([]rune, size)
 		for y := range grid[x] {
 			if (x == 0 || x == size-1) && (y == 0 || y == size-1) {
 				grid[x][y] = blocked
+			} else {
+				grid[x][y] = fill
 			}
 		}
 	}
-	return model{size: size, grid: grid, horizontalFill: true}
+	return grid
 }
 
 func (m model) Init() tea.Cmd { return nil }
@@ -111,8 +124,24 @@ func (m model) isInBounds(x, y int) bool {
 	return x >= 0 && x < m.size && y >= 0 && y < m.size
 }
 
+// isSolved reports whether every cell in the grid matches the answer grid.
+func (m model) isSolved() bool {
+	for x := range m.grid {
+		for y := range m.grid[x] {
+			if m.grid[x][y] != m.answerGrid[x][y] {
+				return false
+			}
+		}
+	}
+	return true
+}
+
 func (m model) View() string {
-	return m.renderGrid() + "\n" + helpText
+	view := m.renderGrid() + "\n"
+	if m.isSolved() {
+		view += "you got the answer!\n"
+	}
+	return view + helpText
 }
 
 // renderGrid draws the grid using box-drawing characters, highlighting the selected cell.
@@ -156,7 +185,6 @@ func cellText(r rune, selected bool) string {
 }
 
 func main() {
-	// TODO: add answer grid, check current against answers
 	size := flag.Int("size", 5, "width and height of the grid")
 	flag.Parse()
 	if *size < 1 {
